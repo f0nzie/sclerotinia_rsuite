@@ -1,0 +1,436 @@
+---
+title: "dbRDA analysis"
+output: 
+  html_notebook:
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+# dbRDA analysis
+
+```{r setup, include = FALSE}
+PROJHOME <- rprojroot::find_rstudio_root_file()
+knitr::opts_knit$set(root.dir = PROJHOME)
+
+knitr::opts_chunk$set(
+  comment = "#>")
+```
+
+
+This document serves to re-assess Sajeewa's dbRDA analysis with the repeat
+lengths that have been modified to avoid inconsistent allele calls. 
+
+Modification in this case means that a tiny amount has been added or subtracted
+to the repeat length to ensure that the alleles are all unique after division.
+
+Below is my attempt at reproduction of Sajeewa's analysis.
+
+## Packages and Data
+
+```{r, load_packages, message = FALSE, warning = FALSE}
+library('tidyverse')
+library('poppr')
+library('vegan')
+library('ggrepel')
+```
+
+
+So, here Sajeewa clone-corrected the data according to the combination of
+Host, Source (aka Field), Region (aka State/Country), and Year. 
+
+
+```{r, load_data}
+load(file.path(PROJHOME, "data", "sclerotinia_16_loci.rda"))
+setPop(dat)   <- ~Host/Source/Region/Year
+setPop(dat11) <- ~Host/Source/Region/Year
+dat11cc <- clonecorrect(dat11, ~Host/Source/Region/Year, keep = 1:4)
+dat16cc <- clonecorrect(dat, ~Host/Source/Region/Year, keep = 1:4)
+dat11cc
+dat16cc
+# Asserting that nothing messed up with the metadata.
+stopifnot(identical(indNames(dat11cc), other(dat11cc)$meta$Isolate))
+stopifnot(identical(indNames(dat16cc), other(dat16cc)$meta$Isolate))
+
+# function to gather Environmental variables, but averaging Severity
+# (aka Straw Test, Virulence). This function is necessary because the
+# data tends to randomly shuffle when being processed vai dplyr functions
+# for better or for worse. ¯\_(ツ)_/¯
+# 
+# @param DAT the full data set
+# @param CC The clone-corrected data set
+# @param wmn should the "Source" column be converted to a binary wmn
+#   factor? When this is true, everything that is not wmn will be converted
+#   to "other"
+# 
+# @return A data frame containing Severity, Host, Source, Year, Region, and MLG
+makeENV <- function(DAT, CC, wmn = FALSE){
+  # Creating the data frame with severity
+  META   <- select(other(DAT)$meta, -Isolate)
+  STRATA <- strata(DAT)
+  STRATA <- if (wmn) mutate(STRATA, Source = ifelse(Source == "wmn", "wmn", "other")) else STRATA
+  MLL    <- data.frame(MLG = mll(DAT))
+  sev    <- bind_cols(META, STRATA, MLL) %>%
+    group_by(Host, Source, Year, Region, MLG) %>% 
+    summarize(Severity = mean(Severity)) %>% # Get mean severity per MLG
+    ungroup()
+  # Ensuring the data is in the correct order
+  META   <- select(other(CC)$meta, -Isolate)
+  STRATA <- strata(CC)
+  MLL    <- data.frame(MLG = mll(CC))
+  bind_cols(META, STRATA, MLL) %>% 
+    left_join(sev)
+}
+
+# Get environmental variables for 11 loci
+ENV11 <- makeENV(dat11, dat11cc)
+ENV11
+stopifnot(identical(ENV11$MLG, mll(dat11cc)))
+ENV11 <- select(ENV11, -MLG)
+
+# Get environmental variables for 16 loci
+ENV16 <- makeENV(dat, dat16cc)
+ENV16
+stopifnot(identical(ENV16$MLG, mll(dat16cc)))
+ENV16 <- select(ENV16, -MLG)
+```
+
+
+## Functions to tie everything together
+
+The analysis has a couple of steps
+
+1. Model choice. Since we don't want to overparamaterize the model, we will use 
+*vegan*'s built in model choice function `ordistep()` to to forward-backward 
+selection of the appropriate model to fit our data. Yes, some (particularly 
+Bayesians) believe that model choice is evil and the proper analysis will find 
+the true pattern in the underlying data, but hey, I'm just trying to make sure 
+that I'm not making overconfident judgements.
+
+2. Plot the results of the model choice using ggplot2, overlaying the top 8 
+explanitory vectors
+
+```{r modelfun}
+# model choice for dbrda/capscale
+# 
+# @param bdist a distance matrix (here, we use Bruvo's distances, which is why
+#        it's called 'bdist').
+# @param ENV a data frame of environmental variables with the same number of
+#        observatios as bdist
+# @param CHOOSER the name of the function to perform the forwards-backwards selection
+# @param ... arguments to be passed on to CHOOSER
+# 
+# @return a capscale object
+choose_dbrda <- function(bdist, ENV, CHOOSER = "ordistep", ...){
+  # Step 1: create null model
+  mod0  <- capscale(bdist ~ 1, data = ENV, add = TRUE)
+  # Step 2: create full model (all variables in ENV)
+  mod1  <- capscale(bdist ~ ., data = ENV, add = TRUE)
+  # Step 3: Run forward-backwards selection (this can take a while)
+  CHOOSER   <- match.fun(CHOOSER)
+  the_model <- CHOOSER(mod0, scope = formula(mod1), ...)
+  # Return the best model with the anova results
+  return(the_model)
+}
+
+# This was ganked from https://github.com/gavinsimpson/ggvegan/blob/59d233977a5b2d15d4de150b782fb1794aa1de8b/R/utils.R
+# 
+# @title Scale Vectors to Data
+# @description Scale vector arrows to \code{fill} proportion of the data.
+# @param arrows a two-column matrix-like object containing coordinates for the arrows/vectors on x and y axes.
+# @param data a two-column matrix-like object containing coordinates of the data on the x and y axes.
+# @param at numeric vector of length 2; location of the origin of the arrows.
+# @param fill numeric; what proportion of the range of the data to fill
+# @return a numeric multiplier that will scale the arrows
+# @author Gavin L. Simpson
+arrowMul <- function(arrows, data, at = c(0, 0), fill = 0.75) {
+    u <- c(range(data[,1], range(data[,2])))
+    u <- u - rep(at, each = 2)
+    r <- c(range(arrows[, 1], na.rm = TRUE), range(arrows[, 2], na.rm = TRUE))
+    rev <- sign(diff(u))[-2]
+    if (rev[1] < 0)
+        u[1:2] <- u[2:1]
+    if (rev[2] < 0)
+        u[3:4] <- u[4:3]
+    u <- u/r
+    u <- u[is.finite(u) & u > 0]
+    fill * min(u)
+}
+# Plotting the dbRDA results
+# 
+# @param db a capscale object
+# @param arrows the number of arrows to plot
+# @param seed a random seed to control plotting of labels
+# @param lab a switch indicating if percent variance should be displayed on the
+#   axes (default: TRUE)
+# @param segal for the arrow labels, the segment alpha channel. Default to 1,
+#   but can be set to 0, indicating that the labels should disappear.
+# @return a ggplot2 object from the scores 
+plot_dbrda <- function(db, arrows = 10, seed = 2017-06-28, lab = TRUE, segal = 1){
+  set.seed(seed)
+  dbsum     <- scores(db, display = c("cn", "bp", "sites"), scaling = "sites")
+  Centroids <- as.data.frame(dbsum$centroids)
+  Centroids <- rownames_to_column(Centroids, var = "cent_type")
+  Centroids <- mutate_(Centroids, .dots = list(Length = ~sqrt(CAP1^2 * CAP2^2)))
+  # Centroids
+  SampleCentroids <- rownames_to_column(data.frame(dbsum$sites), var = "isolate_names")
+  if (lab){
+    labs    <- vegan:::summary.cca(db, axes = 0)[["cont"]][["importance"]]["Proportion Explained", 1:2]
+    xl      <- paste0("Eig. 1 (", round(labs[[1]]*100, 2), "% variance explained)")
+    yl      <- paste0("Eig. 2 (", round(labs[[2]]*100, 2), "% variance explained)")
+  } else {
+    xl      <- "Eig 1"
+    yl      <- "Eig 2"
+  }
+  terms   <- paste0("(", paste(attr(db$terms, "term.labels"), collapse = "|"), ")")
+  mul     <- arrowMul(dbsum$biplot[, 1:2], dbsum$sites)
+  Arrows  <- data.frame(dbsum$biplot * mul)
+  Arrows  <- rownames_to_column(Arrows, var = "class")
+  # Making the classes presentable
+  Arrows$class <- gsub(terms, "\\1: ", Arrows$class)
+  Arrows$class <- gsub(": $", "", Arrows$class)
+  Arrows$class <- gsub("unk", "unknown", Arrows$class)
+  Arrows  <- mutate_(Arrows, .dots = list(Length = ~sqrt(CAP1^2 * CAP2^2)))
+  Arrows  <- arrange(Arrows, Length)
+  Arrows  <- top_n(Arrows, arrows)
+  ggplot(Centroids, aes(x = CAP1, y = CAP2))+
+    geom_point(data = SampleCentroids, 
+               # alpha = 1/2, 
+               # fill = "white",
+               # fill = "dark orange", 
+               color = "grey45", 
+               size = 3, 
+               pch = 21)+
+    coord_cartesian() +
+    geom_segment(aes(x = 0, xend = CAP1, 
+                     y = 0, yend = CAP2),
+                 arrow = arrow(length = unit(0.3, "cm")), 
+                 data = Arrows
+                 ) + 
+    geom_label_repel(aes(x = CAP1, y = CAP2, label = class), 
+                     point.padding = unit(0.5, "lines"),
+                     segment.color = "grey25",
+                     segment.alpha = segal,
+                     data = Arrows) +
+    xlab(xl) +
+    ylab(yl)
+}
+```
+
+
+# Calculations
+
+Here come the calculations. Note, since I am verifying that we get the same
+results from the 16 loci as we do for the 11 loci, we have to do this twice. 
+
+1. calculate Bruvo's genetic distance.
+2. model choice
+
+```{r rda_calculation, cache = TRUE}
+# 11 loci
+dat11cc.bruvo <- dat11cc %>% bruvo.dist(replen = other(.)$REPLEN)
+cap11cc       <- choose_dbrda(dat11cc.bruvo, ENV = ENV11, CHOOSER = "ordistep")
+# 16 loci
+dat16cc.bruvo <- dat16cc %>% bruvo.dist(replen = other(.)$REPLEN)
+cap16cc       <- choose_dbrda(dat16cc.bruvo, ENV = ENV16, CHOOSER = "ordistep")
+```
+
+# ANOVA
+
+The results of our modeling and the marginal effects for each parameter on the
+model itself. 
+
+```{r}
+cap11cc
+cap11cc$anova
+vegan::RsquareAdj(cap11cc)
+cap16cc
+cap16cc$anova
+vegan::RsquareAdj(cap16cc)
+```
+
+
+We can test the effects of how much of the model explains the variance
+
+```{r total_anova, cache = TRUE}
+anova(cap11cc)
+anova(cap16cc)
+```
+
+We can also see the marginal effects with `by = "margin"`
+
+```{r marginal_anova, cache = TRUE}
+set.seed(2017-08-17)
+(cap11anova <- anova(cap11cc, by = "margin"))
+set.seed(2017-08-17)
+(cap16anova <- anova(cap16cc, by = "margin"))
+```
+
+
+# Plot the results
+
+```{r resultplot, fig.width = 5, fig.height = 5}
+set.seed(999)
+plot_dbrda(cap11cc, arrows = 5) + 
+  theme_classic(base_size = 16, base_family = "Helvetica") + 
+  theme(axis.text = element_text(color = "black")) +
+  theme(aspect.ratio = 1)
+plot_dbrda(cap16cc, arrows = 10) +
+  theme_classic(base_size = 16, base_family = "Helvetica") + 
+  theme(axis.text = element_text(color = "black")) +
+  theme(aspect.ratio = 1)
+```
+
+This is all well and good, but what exactly does it actually mean to have only 
+3.33% variance explained (for 11 loci, that is) on the first axis? I was a bit stumped as well. 
+Luckily, Gavin Simpson has some answers: http://stackoverflow.com/a/22537820/2752888
+
+Basically, we have a situation where we have all of the variables
+explaining 45% of the variance and the rest goes unexplained.
+
+```{r, echo = FALSE, results = "asis"}
+cap11sum <- vegan:::summary.cca(cap11cc, axes = 0, scaling = "sites")
+cap16sum <- vegan:::summary.cca(cap16cc, axes = 0, scaling = "sites")
+vartab <- function(x){
+  tot <- x$tot.chi
+  con <- x$constr.chi
+  uco <- x$unconst.chi
+  data.frame(list(Inertia = c(tot, con, uco),
+                  Proportion = c(tot, con, uco)/tot))
+}
+cat("\n\n11 loci:\n\n")
+knitr::kable(vartab(cap11sum), digits = 3)
+cat("\n\n16 loci:\n\n")
+knitr::kable(vartab(cap16sum), digits = 3)
+```
+
+
+## Variance partitioning
+
+First, we want to examine how the entire data fits with the model. We will use
+the alleles as the representative of the entire data. 
+
+```{r varpart1}
+dat11raw <- genind2df(dat11cc, usepop = FALSE) %>% mutate_all(funs(as.integer(.)))
+dat16raw <- genind2df(dat16cc, usepop = FALSE) %>% mutate_all(funs(as.integer(.)))
+vp11     <- varpart(dat11cc.bruvo, ~Year + Region + Host + MCG, data = ENV11, 
+                    comm = dat11raw, add = TRUE)
+plot(vp11, Xnames = c("Full Model", "No Model"))
+try(vp16     <- varpart(dat16cc.bruvo, ~Year + Region + Host, data = ENV16, 
+                        comm = dat16raw, add = TRUE))
+```
+
+```{r}
+vp11 <- varpart(dat11cc.bruvo, ~Year, ~Region, ~Host, ~MCG, data = ENV11, 
+                add = TRUE)
+vp16 <- varpart(dat16cc.bruvo, ~Year, ~Region, ~Host, ~MCG, data = ENV16, 
+                add = TRUE)
+
+plot(vp11, digits = 2, Xnames = c("Year", "Region", "Host", "MCG"))
+
+plot(vp16, digits = 2, Xnames = c("Year", "Region", "Host", "MCG"))
+```
+
+Out of both of the models, MCG explains the most variance, but we have an 
+interesting warning pop up indicating that there is multicollinearity within our
+variables. It appears that all of these are multicollinear with MCG. Since dbRDA
+assumes that all the variables are independent, it would be prudent to re-run 
+the analysis without the MCG variables as well
+
+## Removing Source of Multicollinearity
+
+```{r rda_calculation2, cache = TRUE}
+# 11 loci
+ENV112   <- select(ENV11, -MCG)
+cap11cc2 <- choose_dbrda(dat11cc.bruvo, ENV = ENV112, CHOOSER = "ordistep")
+```
+
+```{r}
+cap11cc2
+cap11cc2$anova
+vegan::RsquareAdj(cap11cc2)
+```
+
+
+```{r total_anova2, cache = TRUE}
+set.seed(2017-08-17)
+anova(cap11cc2)
+```
+
+We can also see the marginal effects with `by = "margin"`
+
+```{r marginal_anova2, cache = TRUE}
+set.seed(2017-08-17)
+(cap11anova2 <- anova(cap11cc2, by = "margin"))
+```
+
+```{r resultplot2, fig.width = 5, fig.height = 5}
+set.seed(999)
+plot_dbrda(cap11cc2, arrows = 5, segal = 0) + 
+  theme_classic(base_size = 16, base_family = "Helvetica") + 
+  theme(axis.text = element_text(color = "black")) +
+  theme(aspect.ratio = 1)
+if (!interactive()) {
+  FILE <- file.path(PROJHOME, "results", "figures", "publication", "Figure7Z.pdf")
+  ggsave(filename = FILE, width = 88, height = 88, units = "mm", scale = 1.25)
+}
+```
+
+What we can see here is that the amount of explained variance went down a bit to
+1.92, and our model now only explains 16% of the variance. 
+
+```{r, echo = FALSE, results = "asis"}
+cap11sum2 <- vegan:::summary.cca(cap11cc2, axes = 0, scaling = "sites")
+knitr::kable(vartab(cap11sum2), digits = 3)
+```
+
+
+```{r}
+vp11     <- varpart(dat11cc.bruvo, ~Severity + Year + Region + Host, data = ENV11, comm = dat11raw, add = TRUE)
+plot(vp11, Xnames = c("Full Model", "No Model"))
+vp11 <- varpart(dat11cc.bruvo, ~Severity, ~Year, ~Region, ~Host, data = ENV11, add = TRUE)
+
+plot(vp11, digits = 2, Xnames = c("Severity", "Year", "Region", "Host"))
+```
+
+## Saving Data
+
+These data are important for reporting in the manuscript and expensive to 
+generate, so I will save them here
+
+```{r save_data}
+caplist1 <- list(
+  anova = cap11anova,
+  R2    = RsquareAdj(cap11cc),
+  components = cap11sum[-1]
+)
+caplist2 <- list(
+  anova = cap11anova2,
+  R2    = RsquareAdj(cap11cc2),
+  components = cap11sum2[-1]
+)
+saveRDS(caplist1, file.path(PROJHOME, "data", "caplist1.rds")) 
+saveRDS(caplist2, file.path(PROJHOME, "data", "caplist2.rds")) 
+```
+
+
+# Conclusions
+
+This analysis showed us two things: Severity is not an important predictor for 
+genetic diversity, but Region, Host, Year, and MCG are all predictors of genetic
+diversit. Explanations for this result could be due to a few reasons: MCG, a
+phenotypic variable associated with pre-zygotic barriers has SOME genetic 
+component to it; the MCGs that explained the most variation were also the MCGs
+that were strongly associated with one genotype (i.e. MCG 5 has 19 isolates of
+MLG 25).
+
+
+<details>
+<summary>Session Information</summary>
+
+```{r, echo = FALSE}
+options(width = 100)
+devtools::session_info()
+```
+
+</details>

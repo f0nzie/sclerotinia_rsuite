@@ -12,14 +12,314 @@ editor_options:
   chunk_output_type: inline
 ---
 
-```{r setup, include=FALSE}
+```{r setup_2, include=FALSE}
 PROJHOME <- rprojroot::find_rstudio_root_file()
 knitr::opts_knit$set(root.dir = PROJHOME)
 ```
 
-```{r load_packages, message = FALSE, warning = FALSE}
+```{r load_packages_2, message = FALSE, warning = FALSE}
 library("tidyverse")
-dir.create(file.path(PROJHOME, "results", "tables"))
+dir.create(file.path(PROJHOME, "results", "tables"), showWarnings = FALSE)
 ```
 
 
+# Purpose
+
+This document is to assess virulence associated with the 10 most common MCGs. We
+can get this from the cleaned data set that we saved in the
+`data-comparison.Rmd` file. Note, we will be labelling the plot with 
+"Aggressiveness" as that is the preferred term.
+
+```{r}
+
+print(PROJHOME)
+data_file <- file.path(PROJHOME, "data", "clean_data.csv")
+file.exists(data_file)
+```
+
+
+```{r load_data_2}
+library(dplyr)
+
+datcols <- cols(
+  .default = col_integer(),
+  Severity = col_double(),
+  Region = col_character(),
+  Source = col_character(),
+  Host = col_character()
+)
+dat <- read_csv(file.path(PROJHOME, "data", "clean_data.csv"), col_types = datcols) %>%
+  select(Severity, MCG, Region, Source, Year)
+
+print(dat)
+```
+
+Now, I can filter out the top 10 MCGs:
+
+```{r filtering}
+top_mcg <- dat %>% 
+  group_by(MCG) %>%
+  summarize(N = n()) %>%
+  arrange(desc(N)) %>%
+  slice(1:10) %>% 
+  inner_join(dat, by = "MCG") %>%
+  select(MCG, Severity) %>%
+  mutate(MCG = forcats::fct_inorder(as.character(MCG)))
+
+print(top_mcg)
+```
+
+# Assessing virulence by MCG
+
+```{r vis, fig.width = 7, fig.height = 4}
+set.seed(2017-06-29)
+ggplot(top_mcg, aes(x = MCG, y = Severity)) +
+  geom_boxplot() +
+  geom_point(position = position_jitter(width = 0.25), alpha = 0.5) +
+  scale_y_continuous(limits = c(1, 9), breaks = c(1, 3, 5, 7, 9), expand = c(0, 0.1)) +
+  # scale_x_discrete(position = "top") +
+  theme_bw(base_size = 16, base_family = "Helvetica") +
+  theme(aspect.ratio = 1/2) +
+  theme(axis.text = element_text(color = "black")) +
+  # theme(axis.ticks.x = element_blank()) +
+  theme(panel.grid.major = element_line(colour = "grey20")) +
+  theme(panel.grid.minor = element_line(colour = "grey50")) +
+  theme(panel.grid.major.x = element_blank()) +
+  theme(panel.border = element_blank()) +
+  labs(list(
+    # title = "Aggressiveness for the top 10 MCGs",
+    y = "Aggressiveness",
+    x = "Mycelial Compatibility Group"
+    ))
+```
+
+```{r virulence_table}
+top_mcg %>% 
+  group_by(MCG) %>%
+  summarize(N = n(), 
+            `Min Aggressiveness` = min(Severity),
+            `Max Aggressiveness` = max(Severity),
+            `Average Aggressiveness` = mean(Severity)
+            ) %>%
+  knitr::kable(digits = 2)
+```
+
+
+## ANOVA
+
+The default ANOVA in R sets contrasts as `contrast.treatment`, which compares
+everything to the first factor, considered the treatment. Since we are
+interested in whether or not there IS a difference between samples, this will
+be sufficient.
+
+After the ANOVA, we performed a Tukey's Honest Significant Difference test to
+see exactly what groups these fell into.
+
+```{r anova, fig.width = 4, fig.height = 8}
+ANOVA <- aov(Severity ~ MCG, data = top_mcg)
+ANOVA
+summary(ANOVA)
+plot(TukeyHSD(ANOVA, conf.level = 0.95), las = 2)
+grps <- agricolae::HSD.test(ANOVA, "MCG", alpha = 0.05)$groups
+
+grps %>% 
+  tibble::rownames_to_column("MCG") %>%
+  dplyr::rename(Group = groups) %>%
+  dplyr::rename(`Mean Aggressiveness` = Severity) %>%
+  readr::write_csv(path = "results/tables/MCG-aggressiveness.csv", 
+                   col_names = TRUE) %>%
+  huxtable::as_huxtable(add_colnames = TRUE) %>%
+  huxtable::set_number_format(row = huxtable::everywhere, col = 1, 0) %>% 
+  huxtable::set_col_width(c(0.05, 0.3, 0.08)) %>%
+  huxtable::set_align(row = huxtable::everywhere, col = 2, "right") %>%
+  huxtable::print_md(max_width = 31)
+```
+
+There appears to be a significant effect at p = `r formatC(broom::tidy(ANOVA)$p.value[1])`.
+
+# Assessing Virulence by Region
+
+Since this was done in Otto-Hanson *et al.*, it would be a good idea for us to 
+assess this as well.
+
+
+```{r fig.width = 5, fig.height = 3.75}
+set.seed(2017-06-29)
+region_dat <- dat %>%
+  group_by(Region) %>%
+  filter(n() > 5) %>%
+  mutate(mean_sev = mean(Severity)) %>%
+  mutate(Source = ifelse(Source == "wmn", "wmn", "producer field")) %>%
+  arrange(desc(mean_sev)) %>%
+  ungroup() %>%
+  mutate(Region = forcats::fct_inorder(Region)) %>%
+  select(Region, Severity, Source)
+
+plot.mean <- function(x) {
+  m <- mean(x, na.rm = TRUE)
+  c(y = m, ymin = m, ymax = m)
+}
+
+set.seed(2017-09-06)
+ggplot(region_dat, aes(x = Region, y = Severity)) +
+  ggforce::geom_sina(aes(fill = Source), 
+                     pch = 21, 
+                     binwidth = 0.1, 
+                     alpha = 0.4) +
+  # geom_point(aes(fill = Source), 
+  #            pch = 21, 
+  #            position = position_jitter(width = 0.25), 
+  #            alpha = 0.35) +
+  # geom_boxplot(alpha = 0.5) +
+  stat_summary(fun.data = plot.mean, geom = "errorbar", colour = "black", width = 0.6, size = 2, alpha = 0.5) +
+  stat_summary(fun.data = plot.mean, geom = "errorbar", colour = "white", width = 0.5, size = 1, alpha = 1) +
+  scale_y_continuous(limits = c(1, 9), breaks = c(1, 3, 5, 7, 9), expand = c(0, 0.1)) +
+  scale_fill_manual(values = rev(c("black", "white"))) +
+  theme_bw(base_size = 16, base_family = "Helvetica") +
+  theme(aspect.ratio = 1/2) +
+  theme(axis.text = element_text(color = "black")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  theme(panel.grid.major = element_line(colour = "grey20")) +
+  theme(panel.grid.minor = element_line(colour = "grey50")) +
+  theme(panel.grid.major.x = element_blank()) +
+  theme(panel.border = element_blank()) +
+  theme(legend.position = "top") +
+  theme(plot.margin = unit(c(0, 0, 0, 0), "lines")) +
+  labs(list(
+    y = "Aggressiveness",
+    x = "Region"
+    ))
+if (!interactive()){
+  ggsave(file.path(PROJHOME, "results", "figures", "publication", "aggressiveness.pdf"),
+         width = 88, units = "mm")
+}
+```
+
+```{r anova2, fig.width = 4, fig.height = 8}
+region_dat %>%
+  group_by(Region) %>%
+  summarize(N = n(), 
+            `Min Aggressiveness` = min(Severity),
+            `Max Aggressiveness` = max(Severity),
+            `Average Aggressiveness` = mean(Severity),
+            `Median Aggressiveness` = median(Severity)
+            ) %>%
+  knitr::kable(digits = 2)
+ANOVA <- aov(Severity ~ Region, data = region_dat)
+ANOVA
+summary(ANOVA)
+plot(TukeyHSD(ANOVA, conf.level = 0.95), las = 2)
+grps <- agricolae::HSD.test(ANOVA, "Region", alpha = 0.05)$groups %>% 
+  tibble::rownames_to_column("Region") %>%
+  dplyr::rename(Group = groups) %>%
+  dplyr::rename(`Mean Aggressiveness` = Severity) %>%
+  readr::write_csv(path = "results/tables/Region-aggressiveness.csv", col_names = TRUE) %>%
+  huxtable::as_huxtable(add_colnames = TRUE) %>%
+  huxtable::set_number_format(row = huxtable::everywhere, col = 1, 0) %>% 
+  huxtable::set_col_width(c(0.13, 0.25, 0.08)) %>%
+  huxtable::set_align(row = huxtable::everywhere, col = 2, "right") %>%
+  huxtable::print_md(max_width = 40)
+```
+
+
+## Testing for differences by assessor
+
+The straw test, until the end of 2007, was performed by Lindsey Otto-Hanson. 
+After that, these were performed by Serena McCoy. The Steadman lab was careful
+to train their members consistently in these practices, so the results from this
+test should be equivalent, but we want to ensure that there are no hidden biases
+between the two. To do this, we will test for differences within region.
+
+
+```{r assessor-diff}
+set.seed(2017-06-29)
+assessor_dat <- dat %>%
+  group_by(Region, Year) %>%
+  filter(n() > 5) %>%
+  mutate(mean_sev = mean(Severity)) %>%
+  mutate(Source = ifelse(Source == "wmn", "wmn", "producer field")) %>%
+  arrange(desc(mean_sev)) %>%
+  ungroup() %>%
+  mutate(Region = forcats::fct_inorder(Region)) %>%
+  mutate(Assessor = factor(ifelse(Year <= 2007, "Otto-Hanson", "McCoy"))) %>% 
+  select(Region, Assessor, Severity, Source)
+res <- aov(Severity ~ Region + Assessor, data = assessor_dat)
+res
+summary(res)
+```
+
+# Assessing virulence by multilocus genotype
+
+
+```{r fig.width = 5, fig.height = 3.5}
+library("poppr")
+load(file.path("data", "sclerotinia_16_loci.rda"))
+strat <- strata(dat11) %>% 
+  add_column(MLG = mll(dat11)) %>%
+  add_column(Severity = other(dat11)$meta$Severity)
+top_mlg <- strat %>% 
+  group_by(MLG) %>%
+  summarize(N = n()) %>%
+  arrange(desc(N)) %>%
+  slice(1:10) %>% 
+  inner_join(strat, by = "MLG") %>%
+  select(MLG, Severity) %>%
+  mutate(MLG = forcats::fct_inorder(as.character(MLG)))
+set.seed(2017-06-29)
+ggplot(top_mlg, aes(x = MLG, y = Severity)) +
+  geom_boxplot() +
+  geom_point(position = position_jitter(width = 0.25), alpha = 0.5) +
+  scale_y_continuous(limits = c(1, 9), breaks = c(1, 3, 5, 7, 9), expand = c(0, 0.1)) +
+  # scale_x_discrete(position = "top") +
+  theme_bw(base_size = 16, base_family = "Helvetica") +
+  theme(aspect.ratio = 1/2) +
+  theme(axis.text = element_text(color = "black")) +
+  # theme(axis.ticks.x = element_blank()) +
+  theme(panel.grid.major = element_line(colour = "grey20")) +
+  theme(panel.grid.minor = element_line(colour = "grey50")) +
+  theme(panel.grid.major.x = element_blank()) +
+  theme(panel.border = element_blank()) +
+  labs(list(
+    # title = "Aggressiveness for the top 10 MCGs",
+    y = "Aggressiveness",
+    x = "Mulitlocus Genotype"
+    ))
+```
+
+```{r anova3, fig.width = 4, fig.height = 8}
+top_mlg %>%
+  group_by(MLG) %>%
+  summarize(N = n(), 
+            `Min Aggressiveness` = min(Severity),
+            `Max Aggressiveness` = max(Severity),
+            `Average Aggressiveness` = mean(Severity)
+            ) %>%
+  knitr::kable(digits = 2)
+ANOVA <- aov(Severity ~ MLG, data = top_mlg)
+ANOVA
+summary(ANOVA)
+plot(TukeyHSD(ANOVA, conf.level = 0.95), las = 2)
+grps <- agricolae::HSD.test(ANOVA, "MLG", alpha = 0.05)$groups %>% 
+  tibble::rownames_to_column("MLG") %>%
+  dplyr::rename(Group = groups) %>%
+  dplyr::rename(`Mean Aggressiveness` = Severity) %>%
+  readr::write_csv(path = file.path(PROJHOME, 
+                                    "results", "tables", 
+                                    "MLG-aggressiveness.csv"), 
+                   col_names = TRUE) %>%
+  huxtable::as_huxtable(add_colnames = TRUE) %>%
+  huxtable::set_number_format(row = huxtable::everywhere, col = 1, 0) %>% 
+  huxtable::set_col_width(c(0.13, 0.25, 0.08)) %>%
+  huxtable::set_align(row = huxtable::everywhere, col = 2, "right") %>%
+  huxtable::print_md(max_width = 40)
+```
+
+<details>
+<summary>Session Information</summary>
+
+```{r, echo = FALSE}
+options(width = 100)
+devtools::session_info()
+```
+
+</details>

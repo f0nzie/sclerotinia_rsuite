@@ -1,0 +1,325 @@
+---
+title: "Population Differentiation Analysis"
+output:
+  pdf_document:
+    toc: yes
+  html_notebook:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+editor_options:
+  chunk_output_type: inline
+---
+
+# Population Differentiation Analysis
+
+```{r setup, include = FALSE}
+PROJHOME <- rprojroot::find_rstudio_root_file()
+knitr::opts_knit$set(root.dir = PROJHOME)
+```
+
+
+## Packages and Data
+
+```{r load_packages, warning = FALSE, message = FALSE}
+library('tidyverse')
+library('poppr')
+library('ggcompoplot')
+```
+
+```{r load_data}
+load(file.path(PROJHOME, "data", "sclerotinia_16_loci.rda"))
+setPop(dat11) <- ~Host/Source/Region/Year
+dat11cc <- clonecorrect(dat11, ~Host/Source/Region/Year, keep = 1:4)
+dat11cc
+
+# Asserting that nothing messed up with the metadata.
+stopifnot(identical(indNames(dat11cc), other(dat11cc)$meta$Isolate))
+dat11.bruvo   <- bruvo.dist(dat11, replen = other(dat11)$REPLEN)
+dat11cc.bruvo <- bruvo.dist(dat11cc, replen = other(dat11)$REPLEN)
+```
+
+# Genotypic Diversity
+
+```{r geno-div, cache = TRUE, fig.width = 10, fig.height = 10, comment = NA}
+set.seed(2017-08-02)
+ptab <- dat11cc %>% setPop(~Region) %>% poppr(sample = 999, total = FALSE)
+```
+
+```{r geno-div2, fig.width = 10, fig.height = 10, comment = NA}
+ptab %>%
+  arrange(desc(N), desc(MLG)) %>%
+  write_csv(file.path(PROJHOME, "results", "tables", 
+                      "genotype_diversity_table_region.csv"), 
+            col_names = TRUE) %>%
+  mutate(Ia = case_when(
+    !is.finite(p.Ia) ~ "-",
+    p.Ia == 0.001 ~ paste0(round(Ia, 2), "*"),
+    p.Ia <= 0.01  ~ paste0(round(Ia, 2), "-"),
+    p.Ia <= 0.05  ~ paste0(round(Ia, 2), "~"),
+    TRUE          ~ as.character(round(Ia, 2))
+  )) %>%
+  mutate(rbarD = case_when(
+    !is.finite(p.rD) ~ "-",
+    p.rD == 0.001 ~ paste0(round(rbarD, 2), "*"),
+    p.rD <= 0.01  ~ paste0(round(rbarD, 2), "-"),
+    p.rD <= 0.05  ~ paste0(round(rbarD, 2), "~"),
+    TRUE          ~ as.character(round(rbarD, 2))
+  )) %>%
+  mutate_if(is.numeric, round, digits = 2) %>%
+  mutate(N = paste(N, MLG, sep = " (") %>% paste0(")") %>% formatC()) %>%
+  mutate(eMLG = paste(eMLG, SE, sep = " (") %>%  paste0(")") %>% formatC()) %>%
+  rename(`*h*` = Hexp) %>%
+  rename(`$E_5$` = E.5) %>%
+  rename(`$I_A$` = Ia) %>%
+  rename(`$\\lambda$` = lambda) %>%
+  rename(`$\\bar{r}_d$` = rbarD) %>%
+  select(-File, -MLG, -SE, -p.rD, -p.Ia) %>% 
+  huxtable::as_huxtable(add_colnames = TRUE) %>%
+  huxtable::set_number_format(huxtable::everywhere, 4:5, 1) %>%
+  huxtable::set_align(huxtable::everywhere, -1, "right") %>%
+  huxtable::set_col_width(c(1.1, 0.9, 1.3, 0.5, 0.5, 1.2, 0.7, 0.6, 0.6, 0.8)) %>%
+  huxtable::print_md(max_width = 80)
+
+
+
+mtab <- mlg.table(dat11, ~Region, background = TRUE)
+```
+
+
+
+# AMOVA
+
+First, we can conduct an AMOVA analysis across all populations, with respect to
+year.
+
+```{r amova-no-cc, cache = TRUE}
+(res   <- poppr.amova(dat11cc, ~Region/Host/Year, dist = dat11cc.bruvo))
+set.seed(999)
+(res.p <- randtest(res, nrepet = 999))
+```
+
+## DAPC of Region
+
+This can tell us how well our regions separate
+
+```{r dapc-region-calc, fig.width = 8, fig.height = 7, cache = TRUE}
+set.seed(2017-07-05)
+region.xval <- xvalDapc(tab(dat11cc), strata(dat11cc)$Region, n.pca = 15:25, 
+                        n.rep = 100)
+region.dapc <- region.xval$DAPC
+```
+
+```{r dapc-region, fig.width = 9, fig.height = 8, cache = TRUE}
+region.dapc
+scatter(region.dapc, 
+        scree.pca = TRUE,
+        bg = "grey95",
+        col = "black",
+        # col = rev(funky(nlevels(strata(dat11cc)$Region))), 
+        pch = seq(nlevels(strata(dat11cc)$Region)),
+        legend = "true",
+        posi.leg = "topleft",
+        posi.pca = "topright"
+        )
+ggcompoplot(region.dapc, setPop(dat11cc, ~Region), pal = rev(funky(nlevels(strata(dat11cc)$Region))), cols = 2)
+```
+
+```{r fig.width = 10, fig.height = 6}
+LDS <- bind_cols(Population = region.dapc$grp, as.data.frame(region.dapc$ind.coord)) %>%
+  as_tibble()
+LDS_pop <- LDS %>% 
+  group_by(Population) %>% 
+  summarize_all(mean) %>%
+  rename_all(function(x) gsub("LD", "mean", x))
+LDS <- full_join(LDS, LDS_pop)
+LDS_PLOT <- ggplot(LDS, aes(x = LD1, y = LD2, color = Population)) + 
+  geom_point(aes(fill = Population), alpha = 0.5, pch = 21, color = "black", size = 2) +
+  geom_segment(aes(x = mean1, y = mean2, xend = LD1, yend = LD2), alpha = 0.5) +
+  stat_ellipse(type = "norm", level = 0.66, alpha = 0.75) + 
+  ggrepel::geom_label_repel(aes(x = mean1, y = mean2, label = Population), 
+                            data = LDS_pop, show.legend = FALSE, color = "black") +
+  theme_bw() +  
+  # theme(aspect.ratio = 1/1.618) +
+  theme(legend.position = "bottom") +
+  theme(axis.text = element_blank()) + 
+  theme(axis.title = element_blank()) + 
+  theme(axis.ticks = element_blank()) + 
+  viridis::scale_color_viridis(discrete = TRUE, direction = -1) +
+  viridis::scale_fill_viridis(discrete = TRUE, direction = -1) +
+  scale_y_continuous(breaks = 0) + 
+  scale_x_continuous(breaks = 0) + 
+  theme(panel.background = element_rect(fill = "grey95")) +
+  theme(panel.grid.major = element_line(color = "black"))
+LDS_PLOT
+LDS_PLOT + facet_wrap(~Population)
+```
+
+
+
+Another way to visualize this is to look at the probability of assignment by
+source pouplation.
+
+```{r dapc-region-prob, fig.width = 7, fig.height = 6}
+region_summary <- region.dapc$posterior %>% 
+  as.data.frame() %>% 
+  as_tibble() %>% 
+  add_column(Individual = indNames(dat11cc)) %>% 
+  add_column(`Original Population` = as.character(strata(dat11cc)$Region)) %>% 
+  group_by(`Original Population`) %>%
+  mutate(n = n()) %>%
+  gather(Population, Posterior, -Individual, -`Original Population`, -n) %>% 
+  group_by(Population, `Original Population`, n) %>% 
+  summarize(`Mean Assignment` = mean(Posterior)) %>% 
+  arrange(`Mean Assignment`) %>% 
+  mutate(Source = case_when(
+    Population == `Original Population` ~ "Original Population",
+    TRUE ~ "Other"
+    )) %>%
+  ungroup() %>%
+  arrange(desc(n)) %>%
+  mutate(`Original Population` = forcats::fct_inorder(`Original Population`)) %>%
+  mutate(Population = factor(Population, levels(`Original Population`))) %>%
+  mutate(`Original Population` = paste0(`Original Population`, " (", n, ")")) %>%
+  mutate(`Original Population` = forcats::fct_inorder(`Original Population`))
+REGION_PLOT <- region_summary %>%
+  filter(n >= 10) %>%
+  ggplot(aes(x = Population, y = `Mean Assignment`)) +
+  geom_segment(aes(xend = Population, yend = 0)) +
+  geom_point(aes(fill = Source), pch = 21, size = 2) + 
+  facet_wrap(~`Original Population`, ncol = 3, strip.position = "top") +
+  scale_fill_grey() +
+  # scale_x_discrete(position = "top") +
+  scale_y_continuous(limits = c(0, 1), minor_breaks = c(seq(0, 1, by = 0.125)), breaks = c(0, 0.5, 1), position = "right") +
+  theme_bw(base_size = 16, base_family = "Helvetica") +
+  theme(legend.position = "top") +
+  theme(aspect.ratio = 1/2) +
+  theme(axis.text = element_text(color = "black")) +
+  theme(axis.ticks.y = element_blank()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  # theme(axis.text.x.top = element_text(angle = 90, vjust = 0.5, hjust = 0)) +
+  theme(panel.grid.major.x = element_line(linetype = 0, color = "grey50")) +
+  theme(panel.grid.major = element_line(colour = "grey20")) +
+  theme(panel.grid.minor = element_line(linetype = 3, colour = "grey50")) +
+  # theme(panel.spacing.y = unit(0, "line")) +
+  theme(strip.background = element_rect(color = NA, fill = "grey90")) +
+  theme(strip.text = element_text(face = "bold", hjust = 0.05)) +
+  theme(panel.border = element_blank()) +
+  xlab("Population Assignment") +
+  ylab("Mean Probability") +
+  labs(list(fill = "Source:"))
+REGION_PLOT
+
+```
+
+
+```{r dapc-region-dualplot, fig.width = 13, fig.height = 6}
+LEG <- cowplot::get_legend(LDS_PLOT + 
+                             theme(legend.position = "right") + 
+                             theme(legend.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "lines")) +
+                             theme(legend.text = element_text(size = 12)))
+cowplot::plot_grid(LEG,
+                   LDS_PLOT + 
+                     theme(legend.position = "none") +
+                     theme(plot.margin = unit(c(0, 0, 0, 0), "lines")) +
+                     theme(panel.border = element_rect(color = "grey50")) +
+                     theme(aspect.ratio = 0.935), 
+                   REGION_PLOT +
+                     theme(plot.margin = unit(c(0, 1, 0, 0), "lines")), 
+                   nrow = 1, 
+                   rel_widths = c(0.25, 0.75, 1),
+                   label_size = 25,
+                   label_fontfamily = "Helvetica",
+                   labels = c(NA, "A", "B"),
+                   align = "v",
+                   axis = "t")
+
+cowplot::ggsave(filename = file.path(PROJHOME, "results", "figures", 
+                                      "publication/DAPC.pdf"),
+       width = 13,
+       height = 6
+      )
+```
+
+
+## DAPC predictions
+
+Since we saw MLGs crossing populations, we want to find out what happens when
+we remove these MLGs, run DAPC on the regions, and then predict where they came
+from.
+
+```{r dapc-mlg, fig.width = 7, fig.height = 7}
+minds <- mlg.crosspop(dat11, ~Region, indexreturn = TRUE)
+dat11.nocross <- dat11[!mll(dat11) %in% minds]
+dat11.nocross
+dat11.nc.dapc <- dapc(dat11.nocross, strata(dat11.nocross)$Region, n.pca = 11, n.da = 14)
+scatter(dat11.nc.dapc)
+dat11.cross <- clonecorrect(dat11[mll(dat11) %in% minds], NA)
+pred <- predict.dapc(dat11.nc.dapc, dat11.cross)
+ggcompoplot(pred, setPop(dat11.cross, ~Region), cols = 2, pal = funky)
+posterior <- as.data.frame(pred$posterior) %>% 
+  rownames_to_column("Sample") %>%
+  bind_cols(data_frame(MLG = mll(dat11.cross))) %>%
+  gather(key = "population", value = "posterior", -Sample, -MLG) %>%
+  group_by(Sample) %>%
+  mutate(entropy = vegan::diversity(posterior)) %>%
+  mutate(label = ifelse(posterior == max(posterior), MLG, NA)) %>%
+  ungroup() %>%
+  mutate(bins = cut(entropy, quantile(entropy)))
+ggplot(posterior, aes(x = population, y = posterior, color = entropy, group = Sample)) +
+  geom_line() +
+  ggrepel::geom_label_repel(aes(label = label)) +
+  viridis::scale_color_viridis() +
+  facet_wrap(~bins, ncol = 1)
+```
+
+
+```{r}
+top5 <- table(mll(dat11)) %>% 
+  sort(decreasing = TRUE) %>% 
+  head(5) %>%
+  names() %>%
+  as.integer()
+top5
+center_point <- function(n){
+  fromto <- c(-1, 1)
+  if (n < 4){
+    fromto <- fromto/8
+  } else if (n < 10){
+    fromto <- fromto/4
+  } else {
+    fromto <- fromto/2
+  }
+  seq(from = fromto[1], to = fromto[2], length.out = n)
+}
+origins <- mlg.crosspop(dat11, ~Region, mlgsub = top5, quiet = TRUE, df = TRUE) %>%
+  mutate(MLG = gsub("MLG.", "", MLG)) %>%
+  mutate(population = match(as.character(Population), posterior$population %>% unique %>% sort)) %>%
+  # group_by(Population) %>%
+  # mutate(population = population + center_point(n())) %>%
+  I()
+posterior %>%
+  filter(MLG %in% top5) %>%
+  ggplot(aes(x = population, y = posterior, color = factor(MLG), group = MLG)) +
+  geom_line() +
+  geom_vline(aes(xintercept = population), data = origins, lty = 2) +
+  scale_color_brewer(palette = "Dark2") +
+  facet_wrap(~MLG, ncol = 1) +
+  labs(list(
+    lty = "Populations discovered in",
+    color = "MLG"
+  ))
+scatter(dat11.nc.dapc)
+```
+
+
+<details>
+<summary>Session Information</summary>
+
+```{r, echo = FALSE}
+options(width = 100)
+devtools::session_info()
+```
+
+</details>

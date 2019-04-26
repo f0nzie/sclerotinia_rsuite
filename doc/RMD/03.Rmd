@@ -12,7 +12,7 @@ editor_options:
   chunk_output_type: inline
 ---
 
-```{r setup, include=FALSE}
+```{r setup_3, include=FALSE}
 PROJHOME <- rprojroot::find_rstudio_root_file()
 knitr::opts_knit$set(root.dir = PROJHOME)
 ```
@@ -21,10 +21,53 @@ knitr::opts_knit$set(root.dir = PROJHOME)
 
 This will tabulate statistics per locus for presentation in a table.
 
-```{r load_packages, message = FALSE, warning = FALSE}
+```{r load_packages_3, message = FALSE, warning = FALSE}
 library("tidyverse")
 library("poppr")
 
-dir.create(file.path(PROJHOME, "results", "tables"))
+load(file.path(PROJHOME, "data", "sclerotinia_16_loci.rda"))
+dir.create(file.path(PROJHOME, "results", "tables"), showWarnings = FALSE)
 ```
 
+```{r locus_table, comment = NA}
+makerange <- . %>% as.integer() %>% range() %>% paste(collapse = "--")
+
+ranges <- map_chr(alleles(dat11), makerange)
+# ranges <- c(ranges, alleles(dat11) %>% unlist(use.names = FALSE) %>% makerange)
+locus_table(dat11, information = FALSE) %>% 
+  as.data.frame() %>%
+  rownames_to_column("Locus") %>%
+  slice(-n()) %>%
+  mutate(Locus = gsub("\\([FH]\\)", "", Locus)) %>%
+  add_column(Range = ranges) %>%
+  add_column(Repeats = other(dat11)$REPLEN[locNames(dat11)]) %>%
+  select(Locus, Range, Repeats, allele, Hexp, Evenness) %>%
+  readr::write_csv(file.path(PROJHOME, "results/tables/locus-table.csv"), col_names = TRUE) %>%
+  mutate(allele = round(allele, 2)) %>%
+  mutate(Repeats = case_when(
+    Repeats <= 2 ~ "di-",
+    Repeats <= 3 ~ "tri-",
+    Repeats <= 4 ~ "tetra-",
+    Repeats <= 5 ~ "penta-",
+    Repeats <= 6 ~ "hexa-"
+  )) %>%
+  rename(`*h*` = Hexp) %>%
+  rename(`No. alleles` = allele) %>%
+  rename(`Repeat Motif` = Repeats) %>%
+  huxtable::as_huxtable(add_colnames = TRUE) %>%
+  huxtable::set_number_format(huxtable::everywhere, 3:4, 0) %>%
+  huxtable::set_number_format(huxtable::everywhere, 5:6, 2) %>%
+  huxtable::set_align(huxtable::everywhere, 2:6, "right") %>%
+  huxtable::set_col_width(c(0.06, 0.07, 0.11, 0.1, 0.05, 0.075)) %>%
+  huxtable::print_md(max_width = 61)
+```
+
+<details>
+<summary>Session Information</summary>
+
+```{r, echo = FALSE}
+options(width = 100)
+devtools::session_info()
+```
+
+</details>
