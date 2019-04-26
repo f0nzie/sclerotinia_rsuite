@@ -1,16 +1,52 @@
-# rsuite create sclerotinia project
+# rsuite: re-creating sclerotinia project
 
-[TOC]
 
-This is the reconstruction of the project **sclerotinia** but using the R package `rsuite`. This package along with it command line client, allow to build complex projects.
+This is the reconstruction of the project **sclerotinia** by using the R package `rsuite`. This package along with its command line client `rsuite`, allows to build complex projects and customize the way the projects are built. This eliminates the curent rigid structure to build projects and packages, focusing in the deployment of the solution.
 
-The original **sclerotinia** project that runs via `make` is located in Github here:
+The original **sclerotinia** project that is built via `make` is located in Github here:
 
 <https://github.com/everhartlab/sclerotinia-366>
 
+## Scripts
+There are three scripts that assist in building the project documents, figures and datasets:
+
+* `R/compile_rmd.R`
+* `R/compile_manuscript.R`
+* `R/tidy.R`
+
+Execute these commands from the command line.
+Example:
+
+```
+Rscript R\compile_rmd.R --which="01.Rmd"
+```
+
+or 
+
+```
+Rscript R\compile_rmd.R --which="all"
+```
+
+Then:
+
+```
+Rscript R\compile_manuscript.R
+```
+
+to compile the manuscript.
 
 
-## Build a template
+## File locations
+All the notebooks that generate figures and tables for the manuscript are located under `doc/RMD`. The manuscript auxiliary files such as bibliography and Latex classes are located under `doc/manuscript`. The final document `manuscript.pdf` will be located here as well.
+
+The intermediate files that are used to build the manuscript are located under the folder `results`.
+
+There are only two data files that are required to build the rest of the datasets. These two files are located under the folder `data/raw`.
+
+Addionally, a package `ScleroWorld`, that provides all the packages dependencies for the **sclerotinia** project is located under `packages/ScleroWorld`.
+
+
+## Build a `rsuite` template
 
 An `rsuite` project can be a project and a package. In this case, we will create the project template and then we create the package template.
 
