@@ -126,8 +126,8 @@ grps %>%
   tibble::rownames_to_column("MCG") %>%
   dplyr::rename(Group = groups) %>%
   dplyr::rename(`Mean Aggressiveness` = Severity) %>%
-  readr::write_csv(path = "results/tables/MCG-aggressiveness.csv", 
-                   col_names = TRUE) %>%
+  readr::write_csv(path = file.path(PROJHOME, 
+                                    "results/tables/MCG-aggressiveness.csv"), col_names = TRUE) %>%
   huxtable::as_huxtable(add_colnames = TRUE) %>%
   huxtable::set_number_format(row = huxtable::everywhere, col = 1, 0) %>% 
   huxtable::set_col_width(c(0.05, 0.3, 0.08)) %>%
@@ -161,7 +161,7 @@ plot.mean <- function(x) {
 }
 
 set.seed(2017-09-06)
-ggplot(region_dat, aes(x = Region, y = Severity)) +
+aggr <- ggplot(region_dat, aes(x = Region, y = Severity)) +
   ggforce::geom_sina(aes(fill = Source), 
                      pch = 21, 
                      binwidth = 0.1, 
@@ -189,11 +189,20 @@ ggplot(region_dat, aes(x = Region, y = Severity)) +
     y = "Aggressiveness",
     x = "Region"
     ))
-if (!interactive()){
-  ggsave(file.path(PROJHOME, "results", "figures", "publication", "aggressiveness.pdf"),
-         width = 88, units = "mm")
-}
+
+# if (!interactive()) {
+#   ggsave(file.path(PROJHOME, "results", "figures", "publication",
+#                    "aggressiveness.pdf"),
+#          width = 88, units = "mm")
+# }
+
+aggr
+ggsave(filename = file.path(PROJHOME, "results", "figures", "publication",
+                 "aggressiveness.pdf"),
+       width=88, units = "mm")
 ```
+
+
 
 ```{r anova2, fig.width = 4, fig.height = 8}
 region_dat %>%
