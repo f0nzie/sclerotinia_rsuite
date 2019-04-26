@@ -1,0 +1,21 @@
+Package: ggcompoplot
+Type: Package
+Title: Plot Posterior Assignment Values From a 'DAPC' Analysis
+Version: 0.1.0
+Authors@R: c(person(c("Zhian", "N."), "Kamvar", role = c("cre", "aut"), email =
+         "kamvarz@science.oregonstate.edu"),
+         person(c("Niklaus", "J."), "Grunwald", role = c("ths"), email =
+         "grunwaln@science.oregonstate.edu"))
+Maintainer: Zhian N. Kamvar <kamvarz@science.oregonstate.edu>
+Description: The package 'adegenet' calculates posterior population assignments,
+    which can be plotted as a stacked bar chart. This package creates a
+    'ggplot2' version of this bar chart, facetted by population.
+Imports:
+    ggplot2,
+    reshape2,
+    grDevices,
+    adegenet
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 6.1.1

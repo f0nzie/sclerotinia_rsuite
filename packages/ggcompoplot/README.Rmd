@@ -1,0 +1,72 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "README-",
+  fig.width = 9,
+  fig.height = 10,
+  cache = TRUE
+)
+```
+
+# ggcompoplot
+
+The goal of ggcompoplot is to create compoplots that can be manipulated using
+the grammar of graphics. This code originally appeared in 
+https://zenodo.org/record/13007. 
+
+## Installation
+
+To install, download devtools, and copy and past this into your R console:
+
+```{r, eval = FALSE}
+devtools::install_github("zkamvar/ggcompoplot")
+```
+
+
+## Example
+
+### Compoplot from DAPC Analysis (from adegenet)
+
+```{r setup_adegenet, fig.width = 7, fig.height = 5}
+library('adegenet')
+library('ggcompoplot')
+library('ggplot2')
+
+data(microbov)
+strata(microbov) <- data.frame(other(microbov))
+
+dapc1 <- dapc(microbov, n.pca=20, n.da=15)
+
+compoplot(dapc1, lab="") # Adegenet compoplot
+```
+
+
+### Using ggcompoplot
+
+To use ggcompoplot, all you need is the results of your DAPC analysis and your
+genind/genlight object:
+
+```{r, ggcompoplot}
+# Setting a named palette of colors
+(rainbov <- setNames(rainbow(nPop(microbov)), popNames(microbov)))
+
+ggcompoplot(dapc1, microbov, pal = rainbov) + theme(axis.text.x = element_blank())
+
+# 3 columns
+ggcompoplot(dapc1, microbov, cols = 3, pal = rainbov) + theme(axis.text.x = element_blank())
+
+# Different color palette
+ggcompoplot(dapc1, microbov, cols = 3, pal = funky) + theme(axis.text.x = element_blank())
+
+# Per Country
+setPop(microbov) <- ~coun
+ggcompoplot(dapc1, microbov, pal = rainbov) + theme(axis.text.x = element_blank())
+```
+
