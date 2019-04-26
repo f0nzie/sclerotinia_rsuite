@@ -1,0 +1,25 @@
+---
+title: "Two"
+output:
+  pdf_document:
+    toc: yes
+  html_notebook:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+PROJHOME <- rprojroot::find_rstudio_root_file()
+knitr::opts_knit$set(root.dir = PROJHOME)
+```
+
+```{r load_packages, message = FALSE, warning = FALSE}
+library("tidyverse")
+dir.create(file.path(PROJHOME, "results", "tables"))
+```
+
+

@@ -1,0 +1,46 @@
+---
+title: Population structure and phenotypic variation of *Sclerotinia sclerotiorum* from dry bean (*Phaseolus vulgaris*) in the United States
+preprint: false
+author:
+  - name: Zhian N. Kamvar
+    email: zkamvar@unl.edu
+    affiliation: 1
+  - name: Bimal Sajeewa Amaradasa
+    email: b.amaradasa@ufl.edu
+    affiliation: 1
+  - name: Rachana Jhala
+    email: rjhala2@unl.edu
+    affiliation: 1
+  - name: Serena McCoy
+    email: serena.mccoy@icloud.com
+    affiliation: 1
+  - name: James R. Steadman
+    email: jsteadman1@unl.edu
+    affiliation: 1
+  - name: Sydney E. Everhart
+    email: everhart@unl.edu
+    affiliation: 1
+    corresponding: true
+affiliation:
+  - code: 1
+    address: Department of Plant Pathology, University of Nebraska-Lincoln, Lincoln, NE 68583
+abstract: >
+  `r paste(readLines("abstract.md"), collapse = "\n  ")`
+header-includes: |
+  \usepackage{indentfirst}
+
+bibliography: biblio.bib
+csl: apa.csl
+output:
+  rticles::peerj_article:
+  citation_package: none
+  base_format: bookdown::pdf_document2 # for using \@ref()
+---
+
+
+```{r setup, include = FALSE, echo = FALSE}
+knitr::opts_knit$set(eval.after = c('fig.cap', 'fig.scap'))
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+

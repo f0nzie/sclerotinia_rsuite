@@ -1,0 +1,27 @@
+---
+title: "One"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+  html_notebook:
+    toc: yes
+  pdf_document:
+    toc: yes
+editor_options:
+  chunk_output_type: inline
+---
+
+
+# Creation of Table 1
+
+Table one is one of those long, descriptive tables that requires a lot of
+fiddling. The *huxtable* package makes working with these tables slightly less
+of a pain in the neck. Because this table involves wrapping and the text
+can get split up, I am manually copying and pasting the result into my document.
+
+```{r load_packages, warning = FALSE, message = FALSE}
+library("readr")
+library("dplyr")
+library("huxtable")
+```
