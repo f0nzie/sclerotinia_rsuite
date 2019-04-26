@@ -8,6 +8,7 @@ Maintainer: Who to complain to <yourfault@somewhere.net>
 Description: More about what it does (maybe more than one line)
 License: What license is it under?
 Imports: logging, 
+  assertr,
   rticles,
   bookdown,
   ggplot2,
@@ -15,11 +16,15 @@ Imports: logging,
   ggforce,
   ggridges,
   ggrepel,
-  readxl, 
-  ggtre
-Remotes:
-  GuangchuangYu/ggtree@07063f9
-
-  
-  
-
+  readxl,
+  huxtable,
+  rmarkdown,
+  agricolae,
+  ggraph,
+  cowplot,
+  viridis,
+  adegenet,
+  ggcompoplot,
+  visNetwork,
+  extrafont
+RoxygenNote: 6.1.1
