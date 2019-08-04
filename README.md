@@ -76,7 +76,6 @@ rsuite proj pkgadd -n ScleroWorld -t sclero_template
 cd ..
 ```
 
-![1556217146041](img/1556217146041.png)
 
 
 
