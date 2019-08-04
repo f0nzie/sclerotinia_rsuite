@@ -16,8 +16,8 @@ args <- args_parser()
 
 library(ScleroWorld)
 library(ggplot2)
-library(extrafont)
-loadfonts(device = "win")
+# library(extrafont)
+# loadfonts(device = "win")
 
 
 loginfo("--> Pandoc version: %s", rmarkdown::pandoc_version())
