@@ -1,5 +1,5 @@
 RSuiteVersion: 0.37.252
-RVersion: 3.5
+RVersion: 3.6
 Project: sclero_project
-Repositories: MRAN[2019-04-24]
+Repositories: MRAN[2019-08-04]
 Artifacts: config_templ.txt
