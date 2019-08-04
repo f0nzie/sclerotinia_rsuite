@@ -21,18 +21,20 @@ loginfo("--> Pandoc version: %s", rmarkdown::pandoc_version())
 DATA_FILES <- list.files("data", pattern = "*.rda|*.rds|*.csv|*.rdb",
                          full.names = TRUE)
 # ANALYSES   <-  "results/table-1.md"
-MANUSCRIPT <- c("doc/manuscript/manuscript.pdf", "doc/manuscript/manuscript.tex")
+MANUSCRIPT <- c("doc/manuscript/manuscript.pdf",
+                "doc/manuscript/manuscript.log",
+                "doc/manuscript/manuscript.tex")
 DIRS       <- c("results/figures/publication", "results/tables")
 
 # file.remove(PARSE_DATA)
 file.remove(DATA_FILES)
 # file.remove(ANALYSES)
 # file.remove(MANUSCRIPT)
-file.remove(DIRS)
+# file.remove(DIRS)
 
 unlink(DIRS, recursive = TRUE, force = TRUE)
 unlink("results", recursive = TRUE, force = TRUE)
-file.remove(list.files("doc/RMD", pattern = "*.html|*.Rmd~",
+file.remove(list.files("doc/RMD", pattern = "*.html|*.Rmd~|*.pdf",
                        full.names = TRUE))
 file.remove(list.files("doc/manuscript", pattern = "*.pdf|*.tex|*.un~|*.Rmd~",
                        full.names = TRUE))
