@@ -3,6 +3,8 @@
 
 This is the reconstruction of the project **sclerotinia** by using the R package `rsuite`. This package along with its command line client `rsuite`, allows to build complex projects and customize the way the projects are built. This eliminates the curent rigid structure to build projects and packages, focusing in the deployment of the solution.
 
+> Use the R version corresponding to the major version number of the project. For instance, `353.0.1`, use `R-3.5.3`.
+
 The original **sclerotinia** project that is built via `make` is located in Github here:
 
 <https://github.com/everhartlab/sclerotinia-366>
