@@ -21,3 +21,6 @@ import(rmarkdown)
 import(rticles)
 import(viridis)
 import(visNetwork)
+
+import(tidyverse)
+import(poppr)
