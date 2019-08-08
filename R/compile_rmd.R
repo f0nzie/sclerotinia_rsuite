@@ -23,7 +23,9 @@ library(ggplot2)
 loginfo("--> Pandoc version: %s", rmarkdown::pandoc_version())
 
 # change to directory where RMD files are
-setwd(file.path(script_path, "../doc/RMD"))
+proj_root <- rprojroot::find_rstudio_root_file()
+setwd(file.path(proj_root, "./doc/RMD"))
+loginfo(proj_root)
 
 # delete _main.Rmd if it was created before
 if (file.exists("_main.Rmd")) {
@@ -42,8 +44,8 @@ knit_rmd <- function(rmds) {
   for (rmd in rmds) {
     loginfo("Knitting notebook %s", rmd)
     ezknitr::ezknit(rmd,
-                    fig_dir = '../../results/figures/',
-                    out_dir = '../../results',
+                    fig_dir = file.path(proj_root, './results/figures/'),
+                    out_dir = file.path(proj_root, './results'),
                     keep_html = TRUE
     )
   }
