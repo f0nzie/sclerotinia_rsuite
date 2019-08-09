@@ -31,8 +31,6 @@ can get this from the cleaned data set that we saved in the
 "Aggressiveness" as that is the preferred term.
 
 ```{r}
-
-print(PROJHOME)
 data_file <- file.path(PROJHOME, "data", "clean_data.csv")
 file.exists(data_file)
 ```
