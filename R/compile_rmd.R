@@ -42,10 +42,10 @@ rmd_files <- list.files(".", "*.Rmd$")
 # function to print RMD files
 knit_rmd <- function(rmds) {
   for (rmd in rmds) {
-    loginfo("Knitting notebook %s", rmd)
+    loginfo("Knitting notebook [%s]", rmd)
     ezknitr::ezknit(rmd,
-                    fig_dir = file.path(proj_root, './results/figures/'),
-                    out_dir = file.path(proj_root, './results'),
+                    out_dir = '../../results',
+                    fig_dir = 'figures',    # this must be a subfolder of out_dir
                     keep_html = TRUE
     )
   }
