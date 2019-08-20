@@ -16,26 +16,31 @@ There are three scripts that assist in building the project documents, figures a
 * `R/compile_manuscript.R`
 * `R/tidy.R`
 
-Execute these commands from the command line.
+To compile one notebook, execute this command from the command line.
 Example:
 
 ```
 Rscript R\compile_rmd.R --which="01.Rmd"
 ```
 
-or 
+To compile all the notebooks:
 
 ```
 Rscript R\compile_rmd.R --which="all"
 ```
 
-Then:
+After all notebooks have been built, compile the manuscript:
 
 ```
 Rscript R\compile_manuscript.R
 ```
 
-to compile the manuscript.
+To clean all output files:
+
+```
+Rscript R\tidy.R
+```
+
 
 
 ## File locations
